@@ -1,140 +1,101 @@
-# TASK 3 — Sequenced Collections en Java 21
+# TASK 3 — Sequenced Collections con Java 21
 
-## Objetivo
+# Qué pide la HU
 
-La tercera tarea compara la forma tradicional de trabajar con los extremos de una lista con las APIs incorporadas en Java 21.
-
-La HU solicita utilizar:
+Comparar:
 
 ```java
-getFirst()
-getLast()
-reversed()
+lista.get(0)
+lista.get(lista.size() - 1)
 ```
 
-sobre la colección de empleados.
+con:
+
+```java
+lista.getFirst()
+lista.getLast()
+lista.reversed()
+```
 
 ---
 
-# 1. Antes de Java 21
+# PASO 0 — Verificar Java 21
 
-Si tenemos:
+Este task necesita Java 21.
 
-```java
-List<Empleado> empleados = new ArrayList<>();
+En Maven:
+
+```xml
+<properties>
+    <maven.compiler.release>21</maven.compiler.release>
+</properties>
 ```
 
-tradicionalmente obteníamos el primero usando:
+Comprueben:
+
+```bash
+java -version
+mvn -version
+```
+
+---
+
+# PASO 1 — Primer elemento con sintaxis Legacy
+
+```java
+var primerEmpleadoLegacy = empleados.get(0);
+```
+
+Significa:
+
+```text
+dame el elemento ubicado en el índice cero
+```
+
+---
+
+# PASO 2 — Último con sintaxis Legacy
+
+```java
+var ultimoEmpleadoLegacy =
+        empleados.get(empleados.size() - 1);
+```
+
+Si hay tres elementos:
+
+```text
+size = 3
+índices = 0, 1, 2
+último = 3 - 1
+```
+
+---
+
+# PASO 3 — Java 21
+
+```java
+var primerEmpleadoModerno = empleados.getFirst();
+
+var ultimoEmpleadoModerno = empleados.getLast();
+```
+
+Comparen:
 
 ```java
 empleados.get(0);
+empleados.getFirst();
 ```
 
-Y el último:
+y:
 
 ```java
 empleados.get(empleados.size() - 1);
-```
-
-Esto funciona.
-
-No está mal.
-
-Pero obliga al programador a pensar en índices.
-
----
-
-# 2. El problema del último índice
-
-En una lista de tamaño:
-
-```text
-5
-```
-
-los índices son:
-
-```text
-0
-1
-2
-3
-4
-```
-
-Por eso el último es:
-
-```java
-size() - 1
-```
-
-Un error típico sería escribir:
-
-```java
-empleados.get(empleados.size());
-```
-
-Eso intenta acceder a una posición que no existe.
-
----
-
-# 3. Java 21
-
-Con las Sequenced Collections, podemos expresar directamente nuestra intención.
-
-## Primer empleado
-
-```java
-var primero = empleados.getFirst();
-```
-
-## Último empleado
-
-```java
-var ultimo = empleados.getLast();
-```
-
-Ahora el código dice exactamente lo que queremos hacer.
-
-No necesitamos calcular índices.
-
----
-
-# 4. Comparación de legibilidad
-
-## Legacy
-
-```java
-var primero = empleados.get(0);
-var ultimo = empleados.get(empleados.size() - 1);
-```
-
-## Java 21
-
-```java
-var primero = empleados.getFirst();
-var ultimo = empleados.getLast();
-```
-
-La versión moderna expresa directamente:
-
-```text
-primero
-último
-```
-
-en lugar de:
-
-```text
-índice cero
-tamaño menos uno
+empleados.getLast();
 ```
 
 ---
 
-# 5. Importante: lista vacía
-
-Antes de obtener el primero o el último deben verificar que existan empleados.
+# PASO 4 — Validar lista vacía
 
 ```java
 if (empleados.isEmpty()) {
@@ -143,164 +104,149 @@ if (empleados.isEmpty()) {
 }
 ```
 
-Después:
-
-```java
-var primero = empleados.getFirst();
-var ultimo = empleados.getLast();
-```
-
-`getFirst()` y `getLast()` evitan tener que calcular manualmente índices, pero no significa que puedan obtener elementos de una lista vacía.
+Después ya pueden consultar extremos.
 
 ---
 
-# 6. `reversed()`
-
-Java 21 también permite obtener una vista en orden inverso:
+# PASO 5 — Método de demostración
 
 ```java
-var empleadosInvertidos = empleados.reversed();
+private static void mostrarOrdenEmpleados(
+        List<Empleado> empleados) {
+
+    if (empleados.isEmpty()) {
+        System.out.println("No hay empleados registrados.");
+        return;
+    }
+
+    var primero = empleados.________();
+
+    var ultimo = empleados.________();
+
+    System.out.println(
+        "Primer empleado: " + primero.getNombre()
+    );
+
+    System.out.println(
+        "Último empleado: " + ultimo.getNombre()
+    );
+}
 ```
 
-Si la lista original conceptualmente es:
+Completen con:
 
 ```text
-[Ana, Bruno, Carlos, Diana]
-```
-
-la vista inversa se recorre como:
-
-```text
-[Diana, Carlos, Bruno, Ana]
+getFirst
+getLast
 ```
 
 ---
 
-# 7. ¿Por qué no necesitamos hacer un algoritmo manual?
-
-Sin esta operación podríamos pensar en:
-
-- recorrer desde `size() - 1` hasta `0`;
-- crear otra lista;
-- intercambiar posiciones;
-- utilizar otras utilidades.
-
-Pero para simplemente **consultar la secuencia en sentido contrario**, `reversed()` expresa directamente la intención.
-
-Ejemplo:
+# PASO 6 — Recorrido normal
 
 ```java
-for (var empleado : empleados.reversed()) {
+System.out.println("
+ORDEN NORMAL");
+
+for (var empleado : empleados) {
     System.out.println(empleado.getNombre());
 }
 ```
 
 ---
 
-# 8. `reversed()` y la lista original
+# PASO 7 — `reversed()`
 
-Para esta HU piensen en `reversed()` como una **vista invertida de la secuencia**.
+```java
+System.out.println("
+ORDEN INVERSO");
 
-No necesitan crear manualmente otro `ArrayList` solo para imprimir los empleados al revés.
+for (var empleado : empleados.reversed()) {
+    System.out.println(empleado.getNombre());
+}
+```
 
-Esto reduce código accidental y hace más evidente la intención.
+Así no necesitan:
+
+```java
+for (var i = empleados.size() - 1; i >= 0; i--) {
+    ...
+}
+```
 
 ---
 
-# 9. Opción extra del menú
-
-Agreguen:
+# PASO 8 — Menú
 
 ```text
 6. Consultar orden de empleados
 ```
 
-Esa opción puede mostrar:
-
-```text
-Primer empleado
-Último empleado
-Lista normal
-Lista invertida
-```
-
-Esto les permite demostrar claramente el criterio de aceptación de Java 21.
-
----
-
-# 10. Método sugerido como ejercicio
-
-Pueden diseñar un método con esta responsabilidad:
+Conexión:
 
 ```java
-private static void mostrarOrdenEmpleados(List<Empleado> empleados)
+case 6:
+    mostrarOrdenEmpleados(empleados);
+    break;
 ```
-
-Dentro, ustedes deben decidir:
-
-1. cómo validar lista vacía;
-2. cómo obtener el primero;
-3. cómo obtener el último;
-4. cómo recorrer el orden normal;
-5. cómo recorrer el orden inverso.
 
 ---
 
-# 11. Comentario sobre evolución Java
+# PASO 9 — Comparación pedagógica
 
-La HU pide comentar la mejora.
+```java
+var primeroLegacy = empleados.get(0);
+var ultimoLegacy = empleados.get(empleados.size() - 1);
 
-Un comentario posible sería:
+var primeroModerno = empleados.getFirst();
+var ultimoModerno = empleados.getLast();
+```
+
+No necesitan conservar ambas formas para siempre; sirven para demostrar la evolución pedida.
+
+---
+
+# Comentario sugerido
 
 ```java
 /*
- * En versiones Legacy el primer y último elemento se obtenían mediante
- * índices: get(0) y get(size() - 1). Java 21 permite expresar directamente
- * la intención mediante getFirst() y getLast(), reduciendo cálculos manuales
- * de índices. reversed() permite recorrer la secuencia en sentido contrario
- * sin implementar manualmente el recorrido inverso.
+ * En Java Legacy los extremos se consultaban mediante índices:
+ * get(0) y get(size() - 1).
+ *
+ * Java 21 incorpora getFirst() y getLast(), que expresan directamente
+ * la intención. reversed() permite recorrer la secuencia en sentido inverso.
  */
 ```
 
-No memoricen el comentario.
+---
 
-Entiendan la idea:
+# Ejercicio accionable
 
-```text
-menos manipulación de índices
-+
-mayor expresividad
-+
-menos posibilidades de escribir mal el último índice
+```java
+private static void mostrarOrdenEmpleados(
+        List<Empleado> empleados) {
+
+    if (__________________) {
+        System.out.println("No hay empleados registrados.");
+        return;
+    }
+
+    var primero = empleados.________________();
+
+    var ultimo = empleados.________________();
+
+    System.out.println(primero.getNombre());
+    System.out.println(ultimo.getNombre());
+
+    for (var empleado : empleados.________________()) {
+        System.out.println(empleado.getNombre());
+    }
+}
 ```
 
 ---
 
-# 12. ¿Significa que `get(index)` dejó de servir?
-
-No.
-
-Todavía necesitamos:
-
-```java
-get(indice)
-```
-
-cuando realmente queremos una posición específica.
-
-Por ejemplo:
-
-```java
-empleados.get(3);
-```
-
-`getFirst()` y `getLast()` resuelven únicamente casos donde nuestro objetivo es específicamente trabajar con los extremos de la secuencia.
-
----
-
-# 13. Comprobación manual
-
-Registren tres empleados:
+# Prueba
 
 ```text
 101 - Ana
@@ -308,24 +254,13 @@ Registren tres empleados:
 103 - Carlos
 ```
 
-La opción debería permitir comprobar:
+Esperado:
 
 ```text
-Primero: Ana
-Último: Carlos
-```
+Primer empleado: Ana
+Último empleado: Carlos
 
-Orden normal:
-
-```text
-Ana
-Bruno
-Carlos
-```
-
-Orden inverso:
-
-```text
+ORDEN INVERSO
 Carlos
 Bruno
 Ana
@@ -333,13 +268,22 @@ Ana
 
 ---
 
-# Checklist del TASK 3
+# Errores frecuentes
 
-- [ ] Mi proyecto está configurado para compilar con Java 21.
-- [ ] Verifico `isEmpty()` antes de consultar extremos.
-- [ ] Utilizo `getFirst()`.
-- [ ] Utilizo `getLast()`.
-- [ ] Utilizo `reversed()`.
-- [ ] Puedo explicar cómo se hacía antes con índices.
-- [ ] Agregué un comentario comparando Legacy con Java 21.
-- [ ] Puedo demostrar el comportamiento desde una opción del menú.
+- intentar usar estos métodos compilando con Java 17;
+- escribir `get(size())`;
+- olvidar validar lista vacía;
+- crear otra lista manualmente solo para imprimir al revés;
+- pensar que `get(index)` deja de existir.
+
+---
+
+# Checklist
+
+- [ ] Compilo con Java 21.
+- [ ] Demostré la sintaxis Legacy.
+- [ ] Utilicé `getFirst()`.
+- [ ] Utilicé `getLast()`.
+- [ ] Utilicé `reversed()`.
+- [ ] Validé lista vacía.
+- [ ] Puedo explicar por qué la sintaxis moderna es más legible.

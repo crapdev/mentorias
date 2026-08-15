@@ -1,20 +1,16 @@
-# Corporate Talent Hub — Guía de la HU de Colecciones
+# Corporate Talent Hub — Guía práctica de la HU de Colecciones
 
-Esta guía está pensada para resolver **paso a paso** la HU de evolución de colecciones desde Java Legacy hasta Java 21.
+Esta guía acompaña la evolución del proyecto de la semana anterior hacia el uso de colecciones modernas de Java.
 
-La idea no es copiar una solución terminada. El objetivo es entender:
-
-- qué problema tiene el código de la semana anterior;
-- qué colección resuelve mejor cada necesidad;
-- qué cambia entre Java 8, Java 11 y Java 21;
-- por qué se usa cada estructura;
-- y cómo comprobar que la implementación funciona.
+> **No es una solución para copiar y pegar.**
+>
+> Encontrarán código suficiente para saber **qué deben modificar y cómo comenzar**, pero varias partes quedan intencionalmente incompletas para que ustedes implementen la lógica.
 
 ---
 
-## Punto de partida
+# Punto de partida
 
-El proyecto parte aproximadamente de esta estructura:
+El proyecto parte de:
 
 ```text
 corporate-talent-hub-control-flujo/
@@ -29,152 +25,191 @@ corporate-talent-hub-control-flujo/
                         └── Empleado.java
 ```
 
-En la versión anterior los empleados se almacenaban en:
+La clase `Empleado` ya existe:
+
+```java
+public class Empleado {
+
+    private final int id;
+    private final String nombre;
+    private final byte edad;
+    private final double salario;
+    private double promedioDesempeno;
+
+    // constructor, getters y setter...
+}
+```
+
+En la semana anterior los empleados se guardaban así:
 
 ```java
 var empleados = new Empleado[MAXIMO_EMPLEADOS];
-```
-
-Eso significa que se está usando un **array de tamaño fijo**.
-
-También se utilizaba:
-
-```java
 var cantidadEmpleados = 0;
 ```
 
-para controlar manualmente cuántas posiciones del array estaban ocupadas.
-
-La nueva HU busca reemplazar parte de ese manejo manual por las APIs de colecciones de Java.
+Esta HU busca eliminar progresivamente ese manejo manual.
 
 ---
 
-# Orden recomendado
+# Orden de trabajo
 
-Trabajen los archivos en este orden:
+Trabajen un archivo por vez:
 
 1. [`TASK-1-ARRAYLIST-HASHMAP.md`](TASK-1-ARRAYLIST-HASHMAP.md)
 2. [`TASK-2-LIST-OF-MAP-OF.md`](TASK-2-LIST-OF-MAP-OF.md)
 3. [`TASK-3-SEQUENCED-COLLECTIONS-JAVA21.md`](TASK-3-SEQUENCED-COLLECTIONS-JAVA21.md)
 4. [`TASK-4-REMOVEIF-VAR-REPORTE.md`](TASK-4-REMOVEIF-VAR-REPORTE.md)
 
-No intenten implementar los cuatro tasks al mismo tiempo.
+Cada guía tiene esta estructura:
+
+```text
+1. Qué pide la HU
+2. Qué parte del código anterior cambia
+3. Código de partida
+4. Código que deben construir
+5. Huecos para completar
+6. Prueba manual
+7. Errores frecuentes
+8. Checklist
+```
 
 ---
 
-# Mapa mental de las estructuras usadas en esta HU
+# Colecciones de esta HU
 
-| Estructura | Para qué la usamos | Tamaño | Orden | Se modifica |
-|---|---|---:|---|---|
-| `Empleado[]` | Código anterior | Fijo | Sí | Sí |
-| `ArrayList<Empleado>` | Lista dinámica de empleados | Dinámico | Sí | Sí |
-| `List.of(...)` | Configuración fija | Fijo | Sí | No |
-| `HashMap<String, Empleado>` | Buscar empleados por ID | Dinámico | No confiar en orden | Sí |
-| `Map.of(...)` | Configuración clave → valor | Fijo | No confiar en orden | No |
+## Array
 
----
+```java
+Empleado[] empleados = new Empleado[50];
+```
 
-# Algo importante: `List` y `ArrayList` no significan exactamente lo mismo
+Tamaño fijo.
 
-Van a encontrar declaraciones como:
+## ArrayList
 
 ```java
 List<Empleado> empleados = new ArrayList<>();
 ```
 
-Aquí hay dos cosas diferentes.
+Tamaño dinámico.
 
-### `List<Empleado>`
+## HashMap
 
-Es el **tipo de la variable**.
+```java
+Map<String, Empleado> empleadosPorId = new HashMap<>();
+```
 
-Dice:
+Relaciona una clave única con un empleado.
 
-> Esta variable trabajará con cualquier implementación que cumpla el contrato de una lista.
+```text
+"101" -> Empleado
+"102" -> Empleado
+```
 
-### `new ArrayList<>()`
+## List.of
 
-Es el **objeto concreto que realmente se crea en memoria**.
+```java
+List<String> tecnologias = List.of(
+        "Java",
+        "Spring Boot",
+        "PostgreSQL"
+);
+```
 
-Entonces:
+Lista inmutable para datos de configuración.
+
+## Map.of
+
+```java
+Map<String, String> sedes = Map.of(
+        "BAQ", "Barranquilla",
+        "BOG", "Bogotá"
+);
+```
+
+Mapa inmutable para relaciones fijas.
+
+---
+
+# ¿Por qué escribir esto?
 
 ```java
 List<Empleado> empleados = new ArrayList<>();
 ```
 
-se puede leer como:
-
-> Quiero trabajar con una lista de empleados y, por ahora, voy a implementarla usando un `ArrayList`.
-
-También sería válido:
+y no simplemente:
 
 ```java
 ArrayList<Empleado> empleados = new ArrayList<>();
 ```
 
-Pero normalmente se prefiere:
+Las dos formas funcionan.
+
+Pero:
 
 ```java
-List<Empleado> empleados = new ArrayList<>();
+List<Empleado>
 ```
 
-porque el código queda menos acoplado a una implementación concreta.
+indica la **abstracción con la que queremos trabajar**.
 
-Por ejemplo, más adelante podríamos cambiar:
+Mientras:
+
+```java
+new ArrayList<>()
+```
+
+indica la **implementación concreta que estamos creando**.
+
+Pueden leerlo como:
+
+```text
+Quiero una LISTA de empleados
+implementada actualmente con ARRAYLIST.
+```
+
+Eso permite cambiar después:
 
 ```java
 List<Empleado> empleados = new LinkedList<>();
 ```
 
-sin cambiar el tipo de la variable.
+sin cambiar el tipo usado por el resto del código.
 
 ---
 
-# ¿Por qué no usar siempre una sola colección?
+# Menú sugerido para practicar
 
-Porque cada estructura resuelve un problema diferente.
-
-Si necesitan:
-
-- recorrer empleados en orden → `ArrayList`;
-- buscar rápidamente por una clave → `HashMap`;
-- guardar opciones que nunca deben cambiar → `List.of`;
-- relacionar una clave fija con un valor fijo → `Map.of`.
-
-Elegir una colección forma parte del diseño del programa.
-
----
-
-# Opciones extra del menú
-
-Además de las opciones originales, pueden agregar estas opciones para practicar la HU:
+No es obligatorio que todas estas opciones formen parte de la entrega final, pero son útiles para demostrar cada criterio:
 
 ```text
+1. Registrar empleado
+2. Mostrar reporte
+3. Consultar categorías salariales
+4. Eliminar empleado
 5. Consultar tecnologías y sedes
 6. Consultar orden de empleados
 7. Filtrar empleados por desempeño mínimo
+8. Generar reporte final
+0. Salir
 ```
-
-Estas opciones no tienen que convertirse necesariamente en nuevas funcionalidades complejas.
-
-La idea es utilizarlas para **probar de forma visible** lo que pide cada task.
-
-Por ejemplo:
-
-- opción 5 → comprobar `List.of()` y `Map.of()`;
-- opción 6 → comprobar `getFirst()`, `getLast()` y `reversed()`;
-- opción 7 → comprobar `removeIf()`.
 
 ---
 
-# Recomendación de trabajo
+# Regla para trabajar esta guía
 
-Antes de escribir código, para cada task respondan:
+Cuando encuentren:
 
-1. ¿Qué problema del código anterior estoy eliminando?
-2. ¿Qué colección nueva voy a utilizar?
-3. ¿Por qué esa colección es adecuada?
-4. ¿Qué código anterior ya no necesito?
-5. ¿Cómo voy a comprobar que funciona?
+```java
+// TODO
+```
 
-Si pueden responder esas cinco preguntas, probablemente entienden lo que están implementando y no solo están copiando código.
+o:
+
+```java
+???
+```
+
+esa parte queda para ustedes.
+
+La guía les mostrará suficiente contexto para saber qué debe ir allí, pero sin entregar el método terminado.

@@ -1,196 +1,81 @@
 # TASK 2 — `List.of()` y `Map.of()`
 
-## Objetivo
+# Qué pide la HU
 
-La segunda tarea introduce los **factory methods** modernos de las colecciones.
-
-La HU pide inicializar datos de configuración como:
-
-- tecnologías;
-- sedes.
-
-utilizando:
+Crear datos de configuración utilizando:
 
 ```java
 List.of(...)
-```
-
-y:
-
-```java
 Map.of(...)
 ```
 
+La idea es diferenciarlos de las colecciones dinámicas del TASK 1.
+
 ---
 
-# 1. Primero: no confundir `ArrayList` con `List.of`
+# PASO 1 — Crear tecnologías
 
-Estas dos líneas crean listas, pero tienen objetivos diferentes.
-
-## Lista dinámica
+Import:
 
 ```java
-List<Empleado> empleados = new ArrayList<>();
+import java.util.List;
 ```
 
-La vamos modificando durante la ejecución:
-
-```java
-empleados.add(...);
-empleados.remove(...);
-```
-
-## Lista fija de configuración
+Pueden crear:
 
 ```java
 List<String> tecnologias = List.of(
         "Java",
         "Spring Boot",
-        "PostgreSQL"
+        "PostgreSQL",
+        "Git"
 );
 ```
 
-Está pensada para valores conocidos desde el inicio.
-
----
-
-# 2. ¿Por qué usar `List.of()` para tecnologías?
-
-Imaginen que las tecnologías permitidas por el sistema son:
-
-```text
-Java
-Spring Boot
-PostgreSQL
-Docker
-```
-
-Si esas opciones son configuración y no deberían modificarse accidentalmente, podemos declararlas:
+También:
 
 ```java
 var tecnologias = List.of(
         "Java",
         "Spring Boot",
         "PostgreSQL",
-        "Docker"
-);
-```
-
-También podrían usar el tipo explícito:
-
-```java
-List<String> tecnologias = List.of(
-        "Java",
-        "Spring Boot",
-        "PostgreSQL",
-        "Docker"
+        "Git"
 );
 ```
 
 ---
 
-# 3. ¿Qué significa que sea inmutable?
+# PASO 2 — Entender la inmutabilidad
 
-Después de crear:
-
-```java
-var tecnologias = List.of("Java", "Docker");
-```
-
-esto no está permitido:
+Lean:
 
 ```java
-tecnologias.add("Python");
-```
-
-Tampoco:
-
-```java
-tecnologias.remove("Java");
-```
-
-La colección fue creada para permanecer con esos elementos.
-
----
-
-# 4. ¿Por qué puede ser más segura para configuración?
-
-Supongamos que utilizamos:
-
-```java
-var tecnologias = new ArrayList<String>();
-tecnologias.add("Java");
 tecnologias.add("Docker");
 ```
 
-Más adelante otro método podría hacer accidentalmente:
+¿Debería funcionar?
 
-```java
-tecnologias.clear();
-```
+No.
 
-y eliminar toda la configuración.
+`List.of()` crea una lista inmutable.
 
-Con:
-
-```java
-List.of(...)
-```
-
-la intención queda mucho más clara:
-
-> Estos datos fueron definidos y no deberían modificarse durante la ejecución.
+Por eso esa línea no debe quedar en la versión final.
 
 ---
 
-# 5. Comentario que pueden agregar al código
-
-La HU pide explicar la diferencia.
-
-No necesitan copiar exactamente este texto, pero la idea debería quedar clara:
+# PASO 3 — Crear sedes
 
 ```java
-/*
- * List.of crea una lista inmutable, adecuada para datos de configuración
- * que no deberían cambiar durante la ejecución. Esto evita modificaciones
- * accidentales mediante add(), remove() o clear().
- *
- * A diferencia de un ArrayList tradicional, esta lista no permite agregar
- * ni eliminar elementos después de su creación.
- */
-```
-
-Lo importante no es el comentario exacto.
-
-Lo importante es que sepan explicar **por qué** se eligió `List.of()`.
-
----
-
-# 6. Utilizar `Map.of()`
-
-Ahora supongamos que las sedes tienen un código:
-
-```text
-BAQ -> Barranquilla
-BOG -> Bogotá
-MED -> Medellín
-```
-
-Podemos representarlo como:
-
-```java
-var sedes = Map.of(
+Map<String, String> sedes = Map.of(
         "BAQ", "Barranquilla",
         "BOG", "Bogotá",
         "MED", "Medellín"
 );
 ```
 
-El mapa representa:
+Conceptualmente:
 
 ```text
-clave -> valor
-
 BAQ -> Barranquilla
 BOG -> Bogotá
 MED -> Medellín
@@ -198,185 +83,184 @@ MED -> Medellín
 
 ---
 
-# 7. ¿Por qué un `Map` para sedes?
-
-Porque tenemos una relación natural:
-
-```text
-código -> nombre de sede
-```
-
-Buscar:
+# PASO 4 — Consultar una sede
 
 ```java
-sedes.get("BAQ")
+var sede = sedes.get("BAQ");
+
+System.out.println(sede);
 ```
 
-obtendría:
+Resultado:
 
 ```text
 Barranquilla
 ```
 
-Conceptualmente es más expresivo que tener dos listas separadas.
+Ahora piensen:
+
+```java
+sedes.put("CLO", "Cali");
+```
+
+Tampoco debería funcionar porque `Map.of()` es inmutable.
 
 ---
 
-# 8. `HashMap` vs `Map.of`
+# PASO 5 — Crear una opción del menú
 
-Ambos son mapas, pero los usamos con propósitos diferentes.
-
-## Empleados
-
-```java
-Map<String, Empleado> empleadosPorId = new HashMap<>();
-```
-
-Debe cambiar constantemente:
-
-```java
-put
-remove
-```
-
-## Sedes
-
-```java
-Map<String, String> sedes = Map.of(...);
-```
-
-Es configuración fija.
-
-No esperamos registrar ni eliminar sedes durante la ejecución.
-
----
-
-# 9. Comparación
-
-| Característica | `ArrayList` | `List.of()` |
-|---|---|---|
-| Se puede agregar | Sí | No |
-| Se puede eliminar | Sí | No |
-| Uso ideal | Datos dinámicos | Configuración |
-| Tamaño cambia | Sí | No |
-| Mantiene orden de lista | Sí | Sí |
-
-| Característica | `HashMap` | `Map.of()` |
-|---|---|---|
-| `put()` | Sí | No |
-| `remove()` | Sí | No |
-| Uso ideal | Datos dinámicos | Configuración fija |
-| Clave → valor | Sí | Sí |
-
----
-
-# 10. ¿Dónde colocarlas?
-
-Para este ejercicio pueden mantenerlas en `App` si todavía están practicando fundamentos y la estructura del proyecto es pequeña.
-
-Por ejemplo, podrían ser variables dentro de `main`:
-
-```java
-var tecnologias = List.of(...);
-var sedes = Map.of(...);
-```
-
-o constantes de clase si quieren reutilizarlas en varios métodos.
-
-Lo importante para esta HU es practicar correctamente las colecciones.
-
----
-
-# 11. Opción extra del menú
-
-Pueden agregar:
+Agreguen:
 
 ```text
 5. Consultar tecnologías y sedes
 ```
 
-Y crear un método parecido conceptualmente a:
+Método sugerido:
 
 ```java
 private static void mostrarConfiguracion(
         List<String> tecnologias,
         Map<String, String> sedes) {
-    // recorrer e imprimir
+
+    System.out.println("
+TECNOLOGÍAS");
+
+    for (var tecnologia : tecnologias) {
+        System.out.println("- " + tecnologia);
+    }
+
+    System.out.println("
+SEDES");
+
+    for (var entrada : sedes.entrySet()) {
+        // TODO imprimir código y nombre
+    }
 }
 ```
 
-No copien el método sin analizarlo.
+Para completar el segundo `for` revisen:
 
-Pregúntense:
-
-- ¿qué datos necesita?
-- ¿por qué recibe `List` y `Map`?
-- ¿necesita modificar esas colecciones?
-- si no las modifica, ¿qué ventaja tiene que sean inmutables?
+```java
+entrada.getKey()
+entrada.getValue()
+```
 
 ---
 
-# 12. Ejercicio de comprensión
+# PASO 6 — Comparar con TASK 1
 
-¿Qué colección usarían para cada caso?
+Completen:
 
-### Caso A
+```text
+empleados
+→ cambian durante la ejecución
+→ __________________
 
-Lista de empleados que entran y salen del sistema.
+tecnologias
+→ no deberían cambiar
+→ __________________
 
-Respuesta esperada:
+empleadosPorId
+→ cambia durante la ejecución
+→ __________________
+
+sedes
+→ configuración fija
+→ __________________
+```
+
+Opciones:
 
 ```text
 ArrayList
-```
-
-porque los datos cambian.
-
-### Caso B
-
-Tecnologías oficialmente soportadas por la empresa.
-
-Respuesta esperada:
-
-```text
-List.of
-```
-
-si son configuración fija.
-
-### Caso C
-
-Empleado identificado por su ID.
-
-Respuesta esperada:
-
-```text
 HashMap
-```
-
-porque existe una clave única.
-
-### Caso D
-
-Código fijo de sede relacionado con nombre de sede.
-
-Respuesta esperada:
-
-```text
+List.of
 Map.of
 ```
 
-si la configuración no debe cambiar.
+---
+
+# PASO 7 — Comentario solicitado por la HU
+
+```java
+/*
+ * List.of y Map.of crean colecciones inmutables.
+ * Son apropiadas para datos de configuración porque evitan cambios
+ * accidentales durante la ejecución.
+ *
+ * A diferencia de ArrayList y HashMap, no permiten operaciones
+ * de modificación como add(), put(), remove() o clear().
+ */
+```
 
 ---
 
-# Checklist del TASK 2
+# Mini reto
 
-- [ ] Creé una lista de tecnologías usando `List.of()`.
-- [ ] Entiendo que no puedo usar `.add()` sobre esa lista.
-- [ ] Creé un mapa de sedes usando `Map.of()`.
-- [ ] Entiendo la diferencia entre el `HashMap` de empleados y el `Map.of()` de configuración.
-- [ ] Agregué un comentario explicando por qué las colecciones inmutables son apropiadas para configuración.
-- [ ] Puedo mostrar tecnologías y sedes desde una opción de prueba.
+Agreguen:
 
-Cuando esto funcione, continúen con Java 21.
+```text
+Docker
+```
+
+### Incorrecto
+
+```java
+tecnologias.add("Docker");
+```
+
+### Correcto
+
+Modificar la creación:
+
+```java
+List.of(
+        "Java",
+        "Spring Boot",
+        "PostgreSQL",
+        "Git",
+        ???
+);
+```
+
+---
+
+# Código accionable incompleto
+
+```java
+var tecnologias = List.of(
+        "Java",
+        "Spring Boot",
+        ???
+);
+
+var sedes = Map.of(
+        "BAQ", "Barranquilla",
+        "BOG", ???
+);
+
+mostrarConfiguracion(
+        ???,
+        ???
+);
+```
+
+---
+
+# Errores frecuentes
+
+- usar `new ArrayList<>()` para datos que deberían ser fijos;
+- intentar `.add()` sobre `List.of()`;
+- intentar `.put()` sobre `Map.of()`;
+- confundir el `HashMap` dinámico con el `Map.of()` fijo.
+
+---
+
+# Checklist
+
+- [ ] Utilicé `List.of()` para tecnologías.
+- [ ] Utilicé `Map.of()` para sedes.
+- [ ] Puedo recorrer ambas colecciones.
+- [ ] Entiendo por qué no permiten modificaciones.
+- [ ] Agregué un comentario sobre inmutabilidad.
+- [ ] Puedo explicar cuándo elegiría `ArrayList` en lugar de `List.of()`.
