@@ -126,7 +126,7 @@ Para iniciar el proyecto desde cero, utilizaremos **Spring Initializr** ([start.
 
 - **Project:** Maven
 - **Language:** Java
-- **Spring Boot:** 3.3.x (o la versión 3.x estable disponible)
+- **Spring Boot:** 4.1.1 (o la versión 4.x estable disponible)
 - **Group:** `com.eventify`
 - **Artifact:** `eventify`
 - **Name:** `eventify`
