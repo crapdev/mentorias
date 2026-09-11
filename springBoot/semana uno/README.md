@@ -144,7 +144,7 @@ Una vez descargado y abierto el proyecto, abre el archivo `pom.xml` y añade la 
 <dependency>
     <groupId>org.springdoc</groupId>
     <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.6.0</version>
+    <version>3.1.0</version>
 </dependency>
 ```
 
