@@ -6,7 +6,6 @@ Guía de estudio e implementación paso a paso del cimiento arquitectónico de *
 
 ## 📋 Tabla de contenidos
 
-- [Dudas o información faltante](#dudas-o-información-faltante)
 - [1. ¿Qué vamos a construir?](#1-qué-vamos-a-construir)
 - [2. ¿Qué pide exactamente la Historia de Usuario?](#2-qué-pide-exactamente-la-historia-de-usuario)
 - [3. Conceptos que debemos entender antes de comenzar](#3-conceptos-que-debemos-entender-antes-de-comenzar)
@@ -21,28 +20,6 @@ Guía de estudio e implementación paso a paso del cimiento arquitectónico de *
 - [12. Checklist final](#12-checklist-final)
 - [13. ¿Qué aprendimos?](#13-qué-aprendimos)
 - [14. Mini repaso](#14-mini-repaso)
-
----
-
-## Dudas o información faltante
-
-Antes de escribir código, se identifican las siguientes ambigüedades en el enunciado y se definen los supuestos de trabajo:
-
-1. **Rutas y verbos para `Venue` (Lugares):**
-   - *Ambigüedad:* El Escenario 1 detalla la ruta `POST /api/events`, pero no especifica los endpoints para `Venue`.
-   - *Supuesto:* Por simetría arquitectónica y diseño REST, se implementan `POST /api/venues` para registrar y `GET /api/venues` para listar.
-
-2. **Tipos de datos de los modelos:**
-   - *Ambigüedad:* El requerimiento lista los nombres de los atributos sin especificar sus tipos de datos en Java.
-   - *Supuesto:* Para `Event`: `id` (`Long`), `nombre` (`String`), `fecha` (`LocalDate`), `descripcion` (`String`). Para `Venue`: `id` (`Long`), `nombre` (`String`), `direccion` (`String`), `capacidad` (`Integer`).
-
-3. **Mecanismo para desactivar el Seeder (Escenario 3):**
-   - *Ambigüedad:* Se solicita verificar el catálogo vacío cuando el seeder está desactivado, sin especificar cómo apagarlo.
-   - *Supuesto:* Se coloca la anotación `@ConditionalOnProperty(name = "eventify.seeder.enabled", havingValue = "true", matchIfMissing = true)` sobre la clase `DataSeeder`. De esta forma, basta con definir `eventify.seeder.enabled=false` en `application.properties` para iniciar la aplicación sin datos precargados.
-
-4. **Comportamiento ante datos inválidos (Escenario 2):**
-   - *Ambigüedad:* La HU indica que la capa `@Service` debe detectar la falla y el sistema debe lanzar una excepción o retornar un error controlado impidiendo que el dato llegue al repositorio.
-   - *Supuesto:* La validación vive estrictamente en la capa `@Service` y lanza una excepción de tipo `ValidationException` (que hereda de `RuntimeException`), deteniendo la ejecución antes de tocar el repositorio.
 
 ---
 
