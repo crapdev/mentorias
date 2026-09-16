@@ -1,12 +1,15 @@
 # Eventify — Semana 2
 
-Guía de estudio e implementación paso a paso de la evolución de **Eventify** hacia la persistencia real, aplicando Spring Data JPA, Hibernate, un CRUD completo, manejo de errores con código `404`, y paginación/ordenamiento de resultados.
+Guía de estudio e implementación paso a paso de la evolución de **Eventify** hacia la persistencia real, aplicando Spring Data JPA, Hibernate, un CRUD completo, manejo de errores con código `404` (con mensaje claro), documentación completa en Swagger, y paginación/ordenamiento de resultados.
+
 
 ## 1. ¿Qué vamos a construir?
 
 En la Semana 1 construimos la base arquitectónica de **Eventify**: un catálogo de eventos y lugares que vivía únicamente en memoria, con validaciones básicas y documentación en Swagger.
 
-Ahora vamos a dar el salto que convierte a Eventify en una aplicación real: reemplazaremos las listas en memoria por una **base de datos persistente** usando **Spring Data JPA** e **Hibernate**. Sobre esa base construiremos un **CRUD completo** (crear, consultar, actualizar y eliminar), añadiremos un manejo de errores adecuado cuando un recurso no exista, y optimizaremos los listados con **paginación y ordenamiento**, de forma que el catálogo pueda crecer sin volverse pesado de consultar.
+Ahora vamos a dar el salto que convierte a Eventify en una aplicación real: reemplazaremos las listas en memoria por una **base de datos persistente** usando **Spring Data JPA** e **Hibernate**. Sobre esa base construiremos un **CRUD completo** (crear, consultar, actualizar y eliminar), añadiremos un manejo de errores adecuado —con mensaje claro para el cliente— cuando un recurso no exista, documentaremos correctamente en Swagger tanto la paginación como los códigos de respuesta, y optimizaremos los listados con **paginación y ordenamiento**, de forma que el catálogo pueda crecer sin volverse pesado de consultar.
+
+Todo esto —incluidas las pruebas de repositorio— se valida contra el **mismo motor de base de datos que usa la aplicación en producción: PostgreSQL**. No usamos una base en memoria de por medio, para evitar que un comportamiento que funciona en H2 pero no en PostgreSQL (o viceversa) pase desapercibido.
 
 ---
 
@@ -33,7 +36,7 @@ Copy-Item -Recurse eventify-semana1 eventify-semana2
 En este punto la copia trae de más algunas carpetas que no necesitas. El siguiente paso es borrarlas.
 
 ### Paso 3 — Borra dentro de `eventify-semana2` las carpetas que NO debes conservar
-Dentro de la carpeta nueva, busca y elimina estas tres si existen:
+Dentro de la carpeta nueva, busca y elimina estas si existen:
 
 | Carpeta a borrar | Por qué molesta si la dejas |
 | :--- | :--- |
@@ -68,7 +71,7 @@ Si el comando termina en `BUILD SUCCESS`, ya tienes la Semana 1 funcionando dent
 
 ### Un par de detalles a tener en cuenta
 - **Puerto ocupado:** Si alguna vez tienes la Semana 1 y la Semana 2 corriendo **al mismo tiempo**, solo una puede usar el puerto `8080`. Detén una antes de iniciar la otra, o cambia el puerto de una agregando `server.port=8081` en su `application.properties`.
-- **Base de datos compartida:** Como ambas semanas apuntan al mismo servidor PostgreSQL (configurado en el **Paso 0** de esta guía), si usan la misma base `eventify`, van a leer y escribir exactamente las mismas tablas y registros. Si quieres mantener los datos de cada semana separados, crea una base de datos distinta para la Semana 2 (por ejemplo `eventify_semana2` desde DBeaver) y ajusta `spring.datasource.url` en su `application.properties`.
+- **Bases de datos compartidas:** Esta semana usarás **dos** bases de datos PostgreSQL distintas en el mismo servidor: `eventify` (para correr la aplicación) y `eventify_test` (exclusiva para las pruebas de `@DataJpaTest`, ver Paso 0.2). Si además tienes el proyecto de la Semana 1 apuntando a `eventify`, ambos leerán y escribirán las mismas tablas; si quieres mantenerlos separados, crea una base adicional (por ejemplo `eventify_semana2`) y ajusta `spring.datasource.url` en su `application.properties`.
 
 ---
 
@@ -89,18 +92,18 @@ Desglosemos los requerimientos en tareas concretas y directas:
    - Implementar `PUT` para actualizar registros existentes, validando que el recurso exista antes de modificarlo.
    - Implementar `DELETE` para el borrado físico de registros.
    - Implementar `GET /{id}` para consultar un único recurso.
-   - Responder con `404 Not Found` cuando el ID solicitado no exista, en lugar de un error genérico `500`.
+   - Responder con `404 Not Found` **y un mensaje claro para el cliente** cuando el ID solicitado no exista, en lugar de un error genérico `500`.
 
 3. **Paginación, ordenamiento y calidad:**
    - Integrar `Pageable` y `Sort` en los endpoints de listado para soportar parámetros como `?page=0&size=10&sort=nombre,asc`.
-   - Reflejar en Swagger los parámetros de paginación y los nuevos códigos de respuesta (`404`, `204`).
-   - Implementar pruebas de integración con `@DataJpaTest` para validar que las entidades se guardan correctamente y que las consultas personalizadas funcionan contra el motor de base de datos.
+   - Reflejar en Swagger, **como parámetros reales y códigos de respuesta reales** (no solo como texto descriptivo), la paginación y los nuevos códigos (`404`, `204`).
+   - Implementar pruebas de integración con `@DataJpaTest` para validar que las entidades se guardan correctamente y que las consultas personalizadas funcionan **contra PostgreSQL**, el mismo motor que usa la aplicación.
 
 ---
 
 ## 3. ¿Qué vamos a crear?
 
-Partimos de la estructura de la Semana 1 y la ampliamos. Los repositorios dejan de ser clases con listas en memoria y pasan a ser interfaces de Spring Data JPA; las entidades ganan anotaciones de persistencia; los servicios y controladores ganan las operaciones de actualizar, eliminar y consultar por ID.
+Partimos de la estructura de la Semana 1 y la ampliamos. Los repositorios dejan de ser clases con listas en memoria y pasan a ser interfaces de Spring Data JPA; las entidades ganan anotaciones de persistencia; los servicios y controladores ganan las operaciones de actualizar, eliminar y consultar por ID; y sumamos una capa de manejo global de excepciones.
 
 ```text
 src/main/java/com/eventify/
@@ -108,11 +111,12 @@ src/main/java/com/eventify/
 ├── config/
 │   └── DataSeederConfig.java         <-- Sigue cargando datos iniciales, ahora vía JPA
 ├── controller/
-│   ├── EventController.java          <-- Suma GET /{id}, PUT /{id}, DELETE /{id} y paginación
-│   └── VenueController.java          <-- Suma GET /{id}, PUT /{id}, DELETE /{id} y paginación
+│   ├── EventController.java          <-- Suma GET /{id}, PUT /{id}, DELETE /{id}, paginación documentada y @ApiResponse
+│   └── VenueController.java          <-- Suma GET /{id}, PUT /{id}, DELETE /{id}, paginación documentada y @ApiResponse
 ├── exception/
 │   ├── InvalidDataException.java     <-- Ya existía (HTTP 400)
-│   └── ResourceNotFoundException.java <-- NUEVA: excepción de negocio con estado HTTP 404
+│   ├── ResourceNotFoundException.java <-- NUEVA: excepción de negocio para recurso inexistente
+│   └── GlobalExceptionHandler.java   <-- NUEVA: @RestControllerAdvice, arma la respuesta 404 con mensaje claro
 ├── model/
 │   ├── Event.java                    <-- Ahora es una entidad JPA (@Entity)
 │   └── Venue.java                    <-- Ahora es una entidad JPA (@Entity)
@@ -124,15 +128,18 @@ src/main/java/com/eventify/
     └── VenueService.java             <-- Suma findById, update y delete
 
 src/main/resources/
-└── application.properties            <-- NUEVO: configuración de conexión a PostgreSQL
+└── application.properties            <-- Configuración de conexión a PostgreSQL (base "eventify")
+
+src/test/resources/
+└── application.properties            <-- NUEVO: configuración de conexión a PostgreSQL de pruebas (base "eventify_test")
 
 src/test/java/com/eventify/
 ├── service/
 │   ├── EventServiceTest.java         <-- Se amplía con pruebas de update/delete/findById
 │   └── VenueServiceTest.java         <-- Se amplía con pruebas de update/delete/findById
 └── repository/
-    ├── EventRepositoryTest.java      <-- NUEVA: prueba de integración con @DataJpaTest
-    └── VenueRepositoryTest.java      <-- NUEVA: prueba de integración con @DataJpaTest
+    ├── EventRepositoryTest.java      <-- NUEVA: prueba de integración con @DataJpaTest contra PostgreSQL
+    └── VenueRepositoryTest.java      <-- NUEVA: prueba de integración con @DataJpaTest contra PostgreSQL
 ```
 
 ### Responsabilidad de cada capa (actualizada)
@@ -141,9 +148,9 @@ src/test/java/com/eventify/
 | :--- | :--- | :--- |
 | **Model** | Representar los datos del negocio | Pasan de ser POJOs simples a entidades JPA mapeadas a tablas reales. |
 | **Repository** | Acceder y gestionar el almacenamiento | Dejan de ser clases con `List`; ahora son interfaces que heredan de `JpaRepository` y Spring genera la implementación. |
-| **Service** | Reglas del negocio y validaciones | Además de validar y guardar, ahora orquesta actualizar, eliminar y consultar por ID, lanzando `404` cuando corresponde. |
-| **Controller** | Punto de entrada HTTP | Suma verbos `PUT` y `DELETE`, y expone paginación mediante parámetros de query. |
-| **Exception** | Señalizar fallos de negocio | Se suma `ResourceNotFoundException` para diferenciar "datos inválidos" (`400`) de "recurso inexistente" (`404`). |
+| **Service** | Reglas del negocio y validaciones | Además de validar y guardar, ahora orquesta actualizar, eliminar y consultar por ID, lanzando `ResourceNotFoundException` cuando corresponde. |
+| **Controller** | Punto de entrada HTTP | Suma verbos `PUT` y `DELETE`, expone paginación documentada con `@ParameterObject`, y declara los códigos de respuesta con `@ApiResponse`. |
+| **Exception** | Señalizar fallos de negocio | Se suma `ResourceNotFoundException` para diferenciar "datos inválidos" (`400`) de "recurso inexistente" (`404`), y `GlobalExceptionHandler` para construir el cuerpo de la respuesta de error. |
 
 ---
 
@@ -158,14 +165,19 @@ Observemos cómo viaja la información al actualizar un evento existente, el esc
     [EventController]
             │
             ▼ (2) Llama a eventService.update(5, event)
-     [EventService] ──── ¿Existe el ID 5? ───► NO ──► Lanza ResourceNotFoundException (HTTP 404)
-            │ (SÍ, existe)
+     [EventService] ──── ¿Existe el ID 5? ───► NO ──► Lanza ResourceNotFoundException
+            │                                              │
+            │ (SÍ, existe)                                 ▼
+            │                                   [GlobalExceptionHandler]
+            │                                   Construye { status: 404, error: "Not Found",
+            │                                   message: "Evento no encontrado con id: 5" }
+            │
             ▼ (3) ¿Nombre vacío? ───► SÍ ──► Lanza InvalidDataException (HTTP 400)
             │ (NO, datos válidos)
             ▼ (4) Llama a eventRepository.save(eventoActualizado)
     [EventRepository extends JpaRepository]
             │
-            ▼ (5) Hibernate genera el UPDATE SQL y lo ejecuta contra la base de datos
+            ▼ (5) Hibernate genera el UPDATE SQL y lo ejecuta contra PostgreSQL
     [Base de datos]
             │
             ▼ (6) Confirma la actualización y retorna la entidad persistida
@@ -180,12 +192,14 @@ Observemos cómo viaja la información al actualizar un evento existente, el esc
 
 ---
 
-### Paso 0 — Conectar el proyecto a una base de datos PostgreSQL real
+### Paso 0 — Conectar el proyecto a PostgreSQL (aplicación **y** pruebas)
 
 #### Concepto necesario: ORM, Spring Data JPA y un cliente de base de datos
 Un **ORM** (*Object-Relational Mapper*) es una herramienta que traduce automáticamente entre objetos Java y filas de una tabla relacional, para que no tengamos que escribir SQL a mano. **Hibernate** es el ORM que usa Spring por debajo; **Spring Data JPA** es la capa que nos entrega repositorios listos para usar sobre ese ORM, sin necesidad de implementar nosotros mismos el acceso a datos.
 
-Esta semana usamos **PostgreSQL**, un motor de base de datos real que corre como un servidor independiente (a diferencia de H2, que puede vivir embebida dentro de la propia aplicación). Para crear la base de datos y revisar los datos de forma visual, usaremos **DBeaver**, un cliente gráfico universal de bases de datos: te permite conectarte a un servidor, ver las tablas, ejecutar consultas SQL y explorar los registros sin escribir código.
+Esta semana usamos **PostgreSQL** tanto para la aplicación como para las pruebas de repositorio. A diferencia de la Semana 1 (donde H2 podía vivir embebida dentro de la propia aplicación), aquí trabajamos siempre contra un servidor real, para que lo que se valida en las pruebas sea exactamente el comportamiento que tendrá en producción. Para crear las bases de datos y revisar los datos de forma visual, usaremos **DBeaver**, un cliente gráfico universal de bases de datos.
+
+> **¿Por qué ya no usamos H2 para las pruebas?** H2 y PostgreSQL no se comportan idéntico en todos los casos (tipos de datos, dialectos SQL, restricciones). Si las pruebas de `@DataJpaTest` corrieran contra H2 mientras la aplicación corre contra PostgreSQL, una consulta derivada o una restricción de columna podría "pasar" en la prueba y fallar en producción, o viceversa. Como esta HU exige que la persistencia sea real desde el día uno, es más coherente validar las pruebas contra el mismo motor que usará la aplicación.
 
 ##### 0.1 — Levanta un servidor PostgreSQL
 Necesitas PostgreSQL corriendo antes de continuar. La forma más rápida, sin instalar nada en tu sistema operativo, es con Docker:
@@ -203,7 +217,7 @@ Esto levanta un contenedor de PostgreSQL 16 con la base de datos `eventify` ya c
 
 Si prefieres instalar PostgreSQL directamente (sin Docker), descárgalo desde postgresql.org, instálalo con el usuario y contraseña que prefieras, y crea la base de datos `eventify` manualmente en el siguiente paso, usando DBeaver.
 
-##### 0.2 — Conéctate con DBeaver y confirma la base de datos
+##### 0.2 — Conéctate con DBeaver y crea DOS bases de datos
 1. Abre DBeaver y crea una nueva conexión: `Database → New Database Connection → PostgreSQL`.
 2. Completa los datos de conexión:
    - **Host:** `localhost`
@@ -212,9 +226,10 @@ Si prefieres instalar PostgreSQL directamente (sin Docker), descárgalo desde po
    - **Username:** `eventify` (o el que hayas definido al instalar PostgreSQL)
    - **Password:** `eventify` (o la que hayas definido)
 3. Da clic en **Test Connection**. Si todo está bien, DBeaver te confirmará la conexión exitosa.
-4. Si usaste el comando de Docker de arriba, la base de datos `eventify` ya existe y puedes continuar. Si instalaste PostgreSQL manualmente y aún no la tienes, créala con clic derecho sobre el servidor en el panel izquierdo → `Create → Database`, y nómbrala `eventify`.
+4. Si usaste el comando de Docker de arriba, la base de datos `eventify` ya existe. Si instalaste PostgreSQL manualmente y aún no la tienes, créala con clic derecho sobre el servidor en el panel izquierdo → `Create → Database`, y nómbrala `eventify`.
+5. **Crea una segunda base de datos exclusiva para pruebas**: clic derecho sobre el servidor → `Create → Database` → nómbrala `eventify_test`. Esta base la usará únicamente `@DataJpaTest`; nunca la abrirá la aplicación en modo normal.
 
-Deja la conexión de DBeaver abierta: la usaremos más adelante para confirmar visualmente que las tablas y los datos se están creando correctamente.
+Deja la conexión de DBeaver abierta: la usaremos más adelante para confirmar visualmente que las tablas y los datos se están creando correctamente en `eventify`, y para revisar `eventify_test` si necesitas depurar una prueba.
 
 ##### 0.3 — Agrega las dependencias al proyecto
 Abre `pom.xml` y añade:
@@ -229,20 +244,15 @@ Abre `pom.xml` y añade:
     <artifactId>postgresql</artifactId>
     <scope>runtime</scope>
 </dependency>
-<dependency>
-    <groupId>com.h2database</groupId>
-    <artifactId>h2</artifactId>
-    <scope>test</scope>
-</dependency>
 ```
 
-> **¿Por qué seguimos agregando H2 si ya no la usamos para desarrollar?** La dejamos, pero solo con `scope=test`. Como vas a ver en el **Paso 8**, Spring Boot detecta que H2 está disponible únicamente durante las pruebas y la usa automáticamente como base de datos embebida para `@DataJpaTest`, sin tocar nunca tu base PostgreSQL real. Así las pruebas siguen siendo rápidas y aisladas, y los datos que ves en DBeaver no se alteran cuando corres `mvn test`.
+> **Nota:** A diferencia de versiones anteriores de esta guía, **no** agregamos aquí la dependencia de H2. Como tanto la aplicación como las pruebas de `@DataJpaTest` usan PostgreSQL, no necesitamos una base embebida en memoria. Si tu `pom.xml` todavía tiene el bloque de `com.h2database:h2`, elimínalo.
 
-##### 0.4 — Configura la conexión en application.properties
-Crea el archivo `src/main/resources/application.properties` con la configuración de conexión:
+##### 0.4 — Configura la conexión de la aplicación en `application.properties`
+Crea el archivo `src/main/resources/application.properties` con la configuración de conexión a la base **de aplicación** (`eventify`):
 
 ```properties
-# Conexión a la base de datos PostgreSQL real
+# Conexión a la base de datos PostgreSQL real (aplicación)
 spring.datasource.url=jdbc:postgresql://localhost:5432/eventify
 spring.datasource.driver-class-name=org.postgresql.Driver
 spring.datasource.username=eventify
@@ -257,7 +267,24 @@ spring.jpa.properties.hibernate.format_sql=true
 
 Ajusta `username` y `password` si usaste valores distintos al crear tu base de datos en el Paso 0.1/0.2.
 
-**Qué logramos:** El proyecto ya sabe cómo conectarse a un servidor PostgreSQL real, y tienes DBeaver listo para inspeccionar visualmente las tablas y los datos que Hibernate creará automáticamente en el siguiente paso.
+##### 0.5 — Configura la conexión de pruebas en `src/test/resources/application.properties`
+Crea (probablemente tendrás que crear también la carpeta) el archivo `src/test/resources/application.properties`, apuntando a la base **de pruebas** (`eventify_test`):
+
+```properties
+# Conexión a la base de datos PostgreSQL de pruebas (usada por @DataJpaTest)
+spring.datasource.url=jdbc:postgresql://localhost:5432/eventify_test
+spring.datasource.driver-class-name=org.postgresql.Driver
+spring.datasource.username=eventify
+spring.datasource.password=eventify
+
+spring.jpa.hibernate.ddl-auto=create-drop
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.show-sql=true
+```
+
+Este archivo, al vivir bajo `src/test/resources`, únicamente lo usa Maven cuando corre las pruebas (`mvn test`), y nunca sobreescribe la configuración real de `src/main/resources` que usa la aplicación al arrancar con `mvn spring-boot:run`. Usamos `ddl-auto=create-drop` para que cada corrida de pruebas empiece con el esquema limpio y lo destruya al terminar, evitando que las tablas de prueba se acumulen o queden desincronizadas.
+
+**Qué logramos:** El proyecto ya sabe cómo conectarse a un servidor PostgreSQL real tanto para correr la aplicación como para correr las pruebas de integración, cada una contra su propia base de datos, y tienes DBeaver listo para inspeccionar visualmente ambas.
 
 ---
 
@@ -420,17 +447,15 @@ public interface VenueRepository extends JpaRepository<Venue, Long> {
 ### Paso 3 — Crear la excepción para recursos inexistentes
 
 #### Concepto necesario: distinguir "dato inválido" de "recurso inexistente"
-`InvalidDataException` (Semana 1) responde con `400` cuando el cliente envía datos incorrectos. Ahora necesitamos una excepción distinta para cuando el cliente pide un recurso que simplemente no existe, como un evento con `ID: 9999`. Ese caso corresponde al código `404 Not Found`, no a un `400` ni a un error interno.
+`InvalidDataException` (Semana 1) responde con `400` cuando el cliente envía datos incorrectos. Ahora necesitamos una excepción distinta para cuando el cliente pide un recurso que simplemente no existe, como un evento con `ID: 9999`. Ese caso corresponde al código `404 Not Found`, no a un `400` ni a un error interno, **y además la HU pide que la respuesta incluya un mensaje claro para quien consume la API** (no basta con el código HTTP solo).
+
+Por eso, en lugar de resolver el código de estado directamente en la excepción con `@ResponseStatus` (como se hacía antes), la dejamos como una excepción de negocio simple y delegamos la construcción de la respuesta completa —código, tipo de error y mensaje— a un manejador global (Paso 3.1).
 
 #### Código: `src/main/java/com/eventify/exception/ResourceNotFoundException.java`
 
 ```java
 package com.eventify.exception;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
-
-@ResponseStatus(HttpStatus.NOT_FOUND)
 public class ResourceNotFoundException extends RuntimeException {
     public ResourceNotFoundException(String mensaje) {
         super(mensaje);
@@ -438,14 +463,89 @@ public class ResourceNotFoundException extends RuntimeException {
 }
 ```
 
-**Qué logramos:** Un mecanismo claro para que cualquier intento de consultar, actualizar o eliminar un ID inexistente termine automáticamente en un `404 Not Found` con un mensaje descriptivo.
+**Qué logramos:** Un tipo de excepción claro para señalar que un recurso solicitado no existe, listo para que el manejador global lo traduzca en una respuesta `404` con mensaje.
+
+---
+
+### Paso 3.1 — Manejo global de errores con un mensaje claro (`@RestControllerAdvice`)
+
+#### Concepto necesario: centralizar la traducción de excepciones a respuestas HTTP
+Hasta ahora, cada excepción decidía su propio código de estado (por ejemplo, con `@ResponseStatus`). El problema es que ese mecanismo solo controla el código HTTP: el cuerpo de la respuesta que ve el cliente termina siendo el formato de error por defecto de Spring, que no siempre es claro. La HU pide explícitamente que el `404` venga acompañado de **un mensaje claro para el cliente**, así que centralizamos esa traducción en un único lugar.
+
+### @RestControllerAdvice
+**Explicación sencilla:** Es una clase especial que "escucha" las excepciones lanzadas por cualquier controlador de la aplicación y decide cómo responder.
+**Explicación técnica:** Combina `@ControllerAdvice` con `@ResponseBody`; Spring intercepta la excepción antes de que llegue al cliente y la enruta al método anotado con `@ExceptionHandler` que coincida con su tipo, devolviendo directamente el objeto serializado como JSON.
+**¿Qué cambia en nuestro proyecto?** Ya no repetimos lógica de manejo de errores en cada controlador; toda excepción de negocio se traduce en un mismo lugar a una respuesta consistente.
+**Comentario mental:** *"Aquí es donde decido, en un solo sitio, cómo se ve un error para quien consume la API."*
+
+### @ExceptionHandler(ResourceNotFoundException.class)
+**Explicación sencilla:** Le dice a Spring "cuando se lance esta excepción específica, ejecuta este método para responder".
+**Explicación técnica:** Vincula un tipo de excepción con un método que construye el `ResponseEntity` correspondiente, permitiendo fijar el código de estado y el cuerpo de la respuesta de forma explícita.
+**¿Qué cambia en nuestro proyecto?** El `404` ahora viene acompañado de un cuerpo JSON con `status`, `error` y `message`, en lugar de un cuerpo vacío o genérico.
+**Comentario mental:** *"No solo digo que algo no se encontró, digo exactamente qué no se encontró y por qué."*
+
+#### Código: `src/main/java/com/eventify/exception/GlobalExceptionHandler.java`
+
+```java
+package com.eventify.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleResourceNotFound(ResourceNotFoundException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.NOT_FOUND.value());
+        body.put("error", HttpStatus.NOT_FOUND.getReasonPhrase());
+        body.put("message", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+    @ExceptionHandler(InvalidDataException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidData(InvalidDataException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", HttpStatus.BAD_REQUEST.getReasonPhrase());
+        body.put("message", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+}
+```
+
+Con esto, una petición a un ID inexistente ya no solo responde `404`; responde con un cuerpo como:
+
+```json
+{
+  "timestamp": "2026-09-15T10:32:11.123",
+  "status": 404,
+  "error": "Not Found",
+  "message": "Evento no encontrado con id: 9999"
+}
+```
+
+> **Nota:** Aprovechamos para manejar también `InvalidDataException` en el mismo lugar, manteniendo la misma estructura de respuesta para ambos tipos de error (`400` y `404`), aunque la HU de esta semana se enfoca puntualmente en el `404`.
+
+**Qué logramos:** Cualquier intento de consultar, actualizar o eliminar un ID inexistente termina en un `404 Not Found` con un cuerpo JSON claro y consistente, sin necesidad de repetir esa lógica en cada controlador.
 
 ---
 
 ### Paso 4 — Ampliar la capa de negocio con el CRUD completo
 
 #### Concepto necesario: el Service como guardián del ciclo de vida completo
-Hasta ahora el `Service` solo sabía guardar y listar. Para un CRUD completo, también debe saber **buscar por ID**, **actualizar** (validando primero que el recurso exista) y **eliminar**. El patrón se repite: primero verificar que el recurso exista (si no, `404`), luego aplicar las validaciones de datos que ya conocíamos (si fallan, `400`), y solo entonces tocar el repositorio.
+Hasta ahora el `Service` solo sabía guardar y listar. Para un CRUD completo, también debe saber **buscar por ID**, **actualizar** (validando primero que el recurso exista) y **eliminar**. El patrón se repite: primero verificar que el recurso exista (si no, se lanza `ResourceNotFoundException`, que el `GlobalExceptionHandler` convierte en `404`), luego aplicar las validaciones de datos que ya conocíamos (si fallan, `400`), y solo entonces tocar el repositorio.
 
 #### Código: `src/main/java/com/eventify/service/EventService.java`
 
@@ -567,11 +667,11 @@ public class VenueService {
 }
 ```
 
-**Qué logramos:** Los servicios ahora cubren el ciclo de vida completo del recurso (crear, listar, consultar, actualizar, eliminar) y aplican la regla de negocio correcta en cada caso: `400` para datos inválidos, `404` para recursos inexistentes.
+**Qué logramos:** Los servicios ahora cubren el ciclo de vida completo del recurso (crear, listar, consultar, actualizar, eliminar) y aplican la regla de negocio correcta en cada caso: `InvalidDataException` para datos inválidos, `ResourceNotFoundException` para recursos inexistentes.
 
 ---
 
-### Paso 5 — Ampliar los controladores con el CRUD y la paginación
+### Paso 5 — Ampliar los controladores con el CRUD, la paginación documentada y los códigos de respuesta
 
 #### Concepto necesario: Pageable y Sort
 Cuando un catálogo crece, devolver todos los registros de una sola vez se vuelve costoso tanto para el servidor como para quien consume la API. La solución es entregar los resultados **por páginas**.
@@ -588,6 +688,20 @@ Cuando un catálogo crece, devolver todos los registros de una sola vez se vuelv
 **¿Qué cambia en nuestro proyecto?** Aun si alguien llama a `GET /api/events` sin parámetros, la respuesta ya viene paginada de forma razonable.
 **Comentario mental:** *"Si no me dicen cómo paginar, yo ya sé cómo hacerlo por defecto."*
 
+### @ParameterObject (springdoc)
+**Explicación sencilla:** Le dice a Swagger "descompón este objeto y muéstrame sus campos como parámetros sueltos", en vez de tratarlo como un bloque opaco.
+**Explicación técnica:** Sin esta anotación, springdoc no sabe cómo interpretar el `Pageable` que construye Spring MVC a partir del query string, y Swagger no muestra `page`, `size` ni `sort` como parámetros disponibles del endpoint —solo queda documentado en la descripción de texto, que el cliente puede pasar por alto—. Con `@ParameterObject` sobre el parámetro `Pageable`, springdoc expande automáticamente esos tres campos como parámetros reales, cada uno con su tipo y valor por defecto.
+**¿Qué cambia en nuestro proyecto?** Quien abre Swagger ve inmediatamente los campos `page`, `size` y `sort` como inputs interactivos del endpoint (con sus valores por defecto ya cargados), no como una nota al pie en la descripción.
+**Comentario mental:** *"No basta con decir que se puede paginar, Swagger tiene que dejarte probarlo."*
+
+Requiere el import `org.springdoc.core.annotations.ParameterObject` (viene incluido con `springdoc-openapi-starter-webmvc-ui`, la misma dependencia que ya usábamos para Swagger desde la Semana 1).
+
+### @ApiResponse y @ApiResponses
+**Explicación sencilla:** Le dicen a Swagger, de forma explícita, qué códigos de respuesta puede devolver un endpoint y qué significa cada uno.
+**Explicación técnica:** A diferencia de `description` dentro de `@Operation` (que es solo texto libre), `@ApiResponse(responseCode = "404", description = "...")` registra el código como una respuesta formal del endpoint en el esquema OpenAPI, y Swagger UI lo despliega como una sección propia (`200`, `404`, etc.) con su descripción, en lugar de mezclarlo todo en un párrafo.
+**¿Qué cambia en nuestro proyecto?** Swagger ahora documenta explícitamente que `GET/PUT/DELETE /{id}` pueden responder `404`, y que `DELETE` responde `204` en el caso exitoso, tal como lo pide la HU.
+**Comentario mental:** *"No lo cuento en un párrafo, lo declaro como una respuesta posible del endpoint."*
+
 ### ResponseEntity, @PathVariable y HttpStatus.NO_CONTENT
 **Explicación sencilla:** `@PathVariable` extrae un valor de la URL (como el `id` en `/api/events/5`); `HttpStatus.NO_CONTENT` (`204`) le dice al cliente "la operación funcionó, pero no hay nada que devolver", que es exactamente lo que corresponde tras un `DELETE`.
 **Explicación técnica:** `@PathVariable` vincula un segmento de la ruta a un parámetro del método; el código `204` es el estándar REST para confirmar una eliminación exitosa sin cuerpo de respuesta.
@@ -603,7 +717,10 @@ import com.eventify.model.Event;
 import com.eventify.service.EventService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -624,6 +741,10 @@ public class EventController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Registrar un nuevo evento", description = "Valida y almacena un evento en la base de datos")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Evento creado correctamente"),
+            @ApiResponse(responseCode = "400", description = "Datos inválidos (por ejemplo, nombre vacío)")
+    })
     public Event create(@RequestBody Event event) {
         return eventService.save(event);
     }
@@ -631,33 +752,41 @@ public class EventController {
     @GetMapping
     @Operation(
             summary = "Listar eventos de forma paginada",
-            description = "Soporta los parámetros 'page', 'size' y 'sort' (ej: ?page=0&size=10&sort=nombre,asc)"
+            description = "Acepta parámetros de paginación y ordenamiento (ver abajo: page, size, sort)"
     )
-    public Page<Event> getAll(@PageableDefault(size = 10) Pageable pageable) {
+    @ApiResponse(responseCode = "200", description = "Listado paginado de eventos")
+    public Page<Event> getAll(@ParameterObject @PageableDefault(size = 10) Pageable pageable) {
         return eventService.findAll(pageable);
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Consultar un evento por ID", description = "Retorna 404 Not Found si el evento no existe")
+    @Operation(summary = "Consultar un evento por ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Evento encontrado"),
+            @ApiResponse(responseCode = "404", description = "Evento no encontrado")
+    })
     public Event getById(@Parameter(description = "ID del evento a consultar") @PathVariable Long id) {
         return eventService.findById(id);
     }
 
     @PutMapping("/{id}")
-    @Operation(
-            summary = "Actualizar un evento existente",
-            description = "Valida que el evento exista antes de actualizar; retorna 404 Not Found si no existe"
-    )
+    @Operation(summary = "Actualizar un evento existente")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Evento actualizado correctamente"),
+            @ApiResponse(responseCode = "400", description = "Datos inválidos"),
+            @ApiResponse(responseCode = "404", description = "Evento no encontrado")
+    })
     public Event update(@PathVariable Long id, @RequestBody Event event) {
         return eventService.update(id, event);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(
-            summary = "Eliminar un evento",
-            description = "Elimina el registro de forma definitiva; retorna 404 Not Found si el ID no existe"
-    )
+    @Operation(summary = "Eliminar un evento")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Evento eliminado correctamente"),
+            @ApiResponse(responseCode = "404", description = "Evento no encontrado")
+    })
     public void delete(@PathVariable Long id) {
         eventService.delete(id);
     }
@@ -673,7 +802,10 @@ import com.eventify.model.Venue;
 import com.eventify.service.VenueService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -694,6 +826,10 @@ public class VenueController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Registrar un nuevo lugar", description = "Valida y almacena un lugar en la base de datos")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Lugar creado correctamente"),
+            @ApiResponse(responseCode = "400", description = "Datos inválidos (por ejemplo, nombre vacío)")
+    })
     public Venue create(@RequestBody Venue venue) {
         return venueService.save(venue);
     }
@@ -701,46 +837,54 @@ public class VenueController {
     @GetMapping
     @Operation(
             summary = "Listar lugares de forma paginada",
-            description = "Soporta los parámetros 'page', 'size' y 'sort' (ej: ?page=0&size=10&sort=nombre,asc)"
+            description = "Acepta parámetros de paginación y ordenamiento (ver abajo: page, size, sort)"
     )
-    public Page<Venue> getAll(@PageableDefault(size = 10) Pageable pageable) {
+    @ApiResponse(responseCode = "200", description = "Listado paginado de lugares")
+    public Page<Venue> getAll(@ParameterObject @PageableDefault(size = 10) Pageable pageable) {
         return venueService.findAll(pageable);
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Consultar un lugar por ID", description = "Retorna 404 Not Found si el lugar no existe")
+    @Operation(summary = "Consultar un lugar por ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lugar encontrado"),
+            @ApiResponse(responseCode = "404", description = "Lugar no encontrado")
+    })
     public Venue getById(@Parameter(description = "ID del lugar a consultar") @PathVariable Long id) {
         return venueService.findById(id);
     }
 
     @PutMapping("/{id}")
-    @Operation(
-            summary = "Actualizar un lugar existente",
-            description = "Valida que el lugar exista antes de actualizar; retorna 404 Not Found si no existe"
-    )
+    @Operation(summary = "Actualizar un lugar existente")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lugar actualizado correctamente"),
+            @ApiResponse(responseCode = "400", description = "Datos inválidos"),
+            @ApiResponse(responseCode = "404", description = "Lugar no encontrado")
+    })
     public Venue update(@PathVariable Long id, @RequestBody Venue venue) {
         return venueService.update(id, venue);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(
-            summary = "Eliminar un lugar",
-            description = "Elimina el registro de forma definitiva; retorna 404 Not Found si el ID no existe"
-    )
+    @Operation(summary = "Eliminar un lugar")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Lugar eliminado correctamente"),
+            @ApiResponse(responseCode = "404", description = "Lugar no encontrado")
+    })
     public void delete(@PathVariable Long id) {
         venueService.delete(id);
     }
 }
 ```
 
-**Qué logramos:** Endpoints REST completos con las cinco operaciones del CRUD, paginación configurable desde la URL, y códigos de estado HTTP alineados con las buenas prácticas (`200`, `201`, `204`, `404`).
+**Qué logramos:** Endpoints REST completos con las cinco operaciones del CRUD, paginación configurable desde la URL y **visible como parámetros reales en Swagger**, y códigos de estado HTTP (`200`, `201`, `204`, `400`, `404`) **declarados explícitamente** como respuestas posibles de cada endpoint, no solo mencionados en texto.
 
 ---
 
 ### Paso 6 — Ajustar el Seeder a la nueva capa de persistencia
 
-El `DataSeederConfig` de la Semana 1 no necesita cambios de lógica: sigue llamando a `eventService.save(...)` y `venueService.save(...)`. La diferencia real ocurre por debajo: ahora esas llamadas terminan ejecutando un `INSERT` real contra la base de datos PostgreSQL, en lugar de agregar un elemento a una `List` en memoria.
+El `DataSeederConfig` de la Semana 1 no necesita cambios de lógica: sigue llamando a `eventService.save(...)` y `venueService.save(...)`. La diferencia real ocurre por debajo: ahora esas llamadas terminan ejecutando un `INSERT` real contra la base de datos PostgreSQL de aplicación (`eventify`), en lugar de agregar un elemento a una `List` en memoria.
 
 #### Código: `src/main/java/com/eventify/config/DataSeederConfig.java`
 
@@ -770,33 +914,39 @@ public class DataSeederConfig {
 }
 ```
 
-> **Nota:** Como ahora los datos se guardan en un servidor PostgreSQL real, si reinicias la aplicación varias veces el Seeder seguirá intentando insertar los mismos registros iniciales cada vez, generando duplicados. Puedes comprobarlo abriendo DBeaver, entrando a la tabla `events` y viendo cómo crece con cada reinicio. Para probar la persistencia real (Escenario 1) esto es justamente lo esperado: lo importante es verificar que los registros creados manualmente durante una sesión sigan existiendo después de reiniciar.
+> **Nota:** Como ahora los datos se guardan en un servidor PostgreSQL real, si reinicias la aplicación varias veces el Seeder seguirá intentando insertar los mismos registros iniciales cada vez, generando duplicados. Puedes comprobarlo abriendo DBeaver, entrando a la tabla `events` (dentro de la base `eventify`) y viendo cómo crece con cada reinicio. Para probar la persistencia real (Escenario 1) esto es justamente lo esperado: lo importante es verificar que los registros creados manualmente durante una sesión sigan existiendo después de reiniciar.
 
 **Qué logramos:** Los datos de prueba ahora quedan escritos físicamente en la base de datos desde el primer arranque.
 
 ---
 
-### Paso 7 — Documentar los nuevos comportamientos en Swagger
+### Paso 7 — Documentación completa en Swagger
 
-Las anotaciones `@Operation` que agregamos en el **Paso 5** ya explican, en lenguaje natural, qué hace cada endpoint y cuándo puede responder `404`. Adicionalmente, usamos `@Parameter` para describir el significado del `id` en la URL, de modo que quien explore la API en Swagger entienda de inmediato qué dato debe enviar.
+A diferencia de versiones anteriores de esta guía —donde la paginación y los códigos de error solo se mencionaban en la `description` de `@Operation`—, ahora Swagger los refleja de forma **estructurada**:
 
-Gracias a que `springdoc-openapi-starter-webmvc-ui` inspecciona automáticamente los tipos de retorno de los métodos, `Page<Event>` y `Page<Venue>` se documentan solos, mostrando en la interfaz de Swagger los campos de metadatos de paginación (`totalElements`, `totalPages`, `number`, `size`, entre otros) sin configuración adicional.
+- Gracias a `@ParameterObject` (Paso 5), los endpoints `GET /api/events` y `GET /api/venues` muestran `page`, `size` y `sort` como campos de entrada interactivos, con sus valores por defecto ya cargados, en lugar de una nota de texto.
+- Gracias a `@ApiResponse`/`@ApiResponses` (Paso 5), cada endpoint declara explícitamente sus posibles códigos de respuesta (`200`, `201`, `204`, `400`, `404`), cada uno con su propia descripción, en una sección separada de Swagger UI.
+- Gracias a `@Parameter` sobre el `id`, quien explore la API entiende de inmediato qué dato debe enviar en la URL.
+
+Adicionalmente, `springdoc-openapi-starter-webmvc-ui` sigue inspeccionando automáticamente los tipos de retorno de los métodos, así que `Page<Event>` y `Page<Venue>` se documentan solos, mostrando los campos de metadatos de paginación (`totalElements`, `totalPages`, `number`, `size`, entre otros) sin configuración adicional.
 
 Puedes seguir accediendo a la documentación interactiva en:
 `http://localhost:8080/swagger-ui/index.html`
 
 ---
 
-### Paso 8 — Pruebas de integración con @DataJpaTest
+### Paso 8 — Pruebas de integración con @DataJpaTest contra PostgreSQL
 
-#### Concepto necesario: probar contra una base de datos real
-Las pruebas de la Semana 1 verificaban la lógica del `Service` simulando el repositorio con Mockito, sin tocar ninguna base de datos. Ahora necesitamos comprobar algo distinto: que las entidades realmente se guardan bien y que las consultas derivadas, como `findByNombreContaining`, funcionan tal como esperamos contra un motor de base de datos de verdad.
+#### Concepto necesario: probar contra el mismo motor que usa la aplicación
+Las pruebas de la Semana 1 verificaban la lógica del `Service` simulando el repositorio con Mockito, sin tocar ninguna base de datos. Ahora necesitamos comprobar algo distinto: que las entidades realmente se guardan bien y que las consultas derivadas, como `findByNombreContaining`, funcionan tal como esperamos **contra PostgreSQL**, el mismo motor que usa la aplicación en producción.
 
 ### @DataJpaTest
 **Explicación sencilla:** Levanta únicamente la parte de Spring relacionada con JPA (repositorios, entidades, la base de datos), sin arrancar toda la aplicación.
-**Explicación técnica:** Configura un contexto de prueba reducido, habilita los repositorios de Spring Data JPA y, por defecto, sustituye la base de datos configurada por una base de datos en memoria embebida, envolviendo cada prueba en una transacción que se revierte al finalizar para mantener las pruebas aisladas entre sí.
-**¿Qué cambia en nuestro proyecto?** Podemos verificar que `EventRepository` guarda y consulta correctamente, en milisegundos, sin necesidad de levantar el servidor web completo ni depender del archivo `./data/eventifydb`.
-**Comentario mental:** *"Solo enciendo la parte de Spring que habla con la base de datos, nada más."*
+**Explicación técnica:** Configura un contexto de prueba reducido, habilita los repositorios de Spring Data JPA y envuelve cada prueba en una transacción que se revierte al finalizar, para mantener las pruebas aisladas entre sí. **Por defecto**, `@DataJpaTest` intenta sustituir el `DataSource` configurado por una base embebida en memoria si detecta una en el classpath; como ya no tenemos H2, no hay nada que sustituir, y la anotación usa directamente el `DataSource` que definimos en `src/test/resources/application.properties` (la base `eventify_test`).
+**¿Qué cambia en nuestro proyecto?** Podemos verificar que `EventRepository` guarda y consulta correctamente contra PostgreSQL real, con las transacciones revertidas automáticamente al final de cada prueba para no ensuciar la base `eventify_test` entre corridas.
+**Comentario mental:** *"Enciendo solo la parte de Spring que habla con la base de datos, y hablo con la base de datos real, no con una simulación."*
+
+> **Importante:** Asegúrate de tener PostgreSQL corriendo (Paso 0.1) y la base `eventify_test` creada (Paso 0.2) antes de ejecutar `mvn test`; de lo contrario, las pruebas de `@DataJpaTest` fallarán al intentar conectarse.
 
 #### Código: `src/test/java/com/eventify/repository/EventRepositoryTest.java`
 
@@ -953,7 +1103,7 @@ También ampliamos las pruebas de servicio de la Semana 1 (con Mockito, sin toca
 
 (No olvides agregar `import com.eventify.exception.ResourceNotFoundException;` al inicio del archivo de prueba.)
 
-**Qué logramos:** Dos niveles de pruebas complementarios: pruebas rápidas de servicio con mocks (lógica de negocio) y pruebas de integración con `@DataJpaTest` (persistencia real contra el motor de base de datos).
+**Qué logramos:** Dos niveles de pruebas complementarios: pruebas rápidas de servicio con mocks (lógica de negocio) y pruebas de integración con `@DataJpaTest` que validan la persistencia real contra **el mismo motor de base de datos que usa la aplicación**, eliminando cualquier diferencia de comportamiento entre "lo que se probó" y "lo que corre en producción".
 
 ---
 
@@ -961,13 +1111,14 @@ También ampliamos las pruebas de servicio de la Semana 1 (con Mockito, sin toca
 
 Repasemos el ciclo de vida completo considerando los cambios de esta semana:
 
-1. **Arranque:** Spring Boot lee la configuración de `application.properties`, se conecta al servidor PostgreSQL en `jdbc:postgresql://localhost:5432/eventify` y, gracias a `spring.jpa.hibernate.ddl-auto=update`, Hibernate crea o actualiza las tablas `events` y `venues` según las entidades anotadas con `@Entity`.
-2. **Construcción de Beans:** Spring Data JPA genera automáticamente la implementación de `EventRepository` y `VenueRepository`. Los servicios y controladores se conectan igual que en la Semana 1, por inyección de constructor.
-3. **Carga de Datos (Seeder):** El `@Bean` de `DataSeederConfig` inserta los registros iniciales, esta vez con `INSERT` reales contra la base de datos.
+1. **Arranque:** Spring Boot lee la configuración de `src/main/resources/application.properties`, se conecta al servidor PostgreSQL en `jdbc:postgresql://localhost:5432/eventify` y, gracias a `spring.jpa.hibernate.ddl-auto=update`, Hibernate crea o actualiza las tablas `events` y `venues` según las entidades anotadas con `@Entity`.
+2. **Construcción de Beans:** Spring Data JPA genera automáticamente la implementación de `EventRepository` y `VenueRepository`. Los servicios y controladores se conectan igual que en la Semana 1, por inyección de constructor. El `GlobalExceptionHandler` queda registrado como `@RestControllerAdvice`, listo para interceptar excepciones de cualquier controlador.
+3. **Carga de Datos (Seeder):** El `@Bean` de `DataSeederConfig` inserta los registros iniciales, esta vez con `INSERT` reales contra la base de datos `eventify`.
 4. **Consulta paginada:** Un cliente envía `GET /api/events?page=0&size=5&sort=nombre,asc`. Spring MVC construye un `Pageable` a partir de esos parámetros y lo pasa al controlador, que delega en `eventService.findAll(pageable)`, que a su vez delega en `eventRepository.findAll(pageable)`. Hibernate traduce esto en una consulta SQL con `LIMIT` y `ORDER BY`.
-5. **Actualización:** Un cliente envía `PUT /api/events/5`. El controlador delega en `eventService.update(5, event)`, que primero busca el recurso (`findById`); si no existe, lanza `ResourceNotFoundException` y Spring responde `404`. Si existe, valida los nuevos datos y guarda los cambios; Hibernate genera el `UPDATE` correspondiente.
+5. **Actualización:** Un cliente envía `PUT /api/events/5`. El controlador delega en `eventService.update(5, event)`, que primero busca el recurso (`findById`); si no existe, lanza `ResourceNotFoundException`, que el `GlobalExceptionHandler` traduce en una respuesta `404` con un cuerpo JSON con `status`, `error` y `message`. Si existe, valida los nuevos datos y guarda los cambios; Hibernate genera el `UPDATE` correspondiente.
 6. **Eliminación:** Un cliente envía `DELETE /api/events/5`. El controlador delega en `eventService.delete(5)`, que verifica primero que el evento exista (mismo mecanismo de `404`) y luego llama a `eventRepository.delete(evento)`. Hibernate ejecuta el `DELETE` físico y el controlador responde `204 No Content`.
-7. **Persistencia real:** Como los datos viven en un servidor PostgreSQL y no en una `List` en memoria, apagar y volver a encender la aplicación no borra la información: al reiniciar, Hibernate se reconecta al mismo servidor y los registros siguen ahí. Puedes confirmarlo en cualquier momento abriendo DBeaver y consultando directamente la tabla `events`.
+7. **Persistencia real:** Como los datos viven en un servidor PostgreSQL y no en una `List` en memoria, apagar y volver a encender la aplicación no borra la información: al reiniciar, Hibernate se reconecta al mismo servidor y los registros siguen ahí. Puedes confirmarlo en cualquier momento abriendo DBeaver y consultando directamente la tabla `events` de la base `eventify`.
+8. **Pruebas:** Al ejecutar `mvn test`, `@DataJpaTest` toma la configuración de `src/test/resources/application.properties` y corre contra la base `eventify_test`, aplicando el mismo dialecto y las mismas restricciones que usa la aplicación real en `eventify`.
 
 ---
 
@@ -998,18 +1149,27 @@ Abre Swagger en:
 
 ### Prueba del Escenario 2: Intento de Acceso a Recurso Inexistente (Camino de Error)
 
-- **Objetivo:** Validar que un ID inexistente responda `404` en las tres operaciones que lo usan.
+- **Objetivo:** Validar que un ID inexistente responda `404` con un mensaje claro en las tres operaciones que lo usan.
 - **Método y URL:** `GET`, `PUT` o `DELETE` sobre `/api/events/9999`
-- **Resultado esperado:** Código HTTP `404 Not Found` con un mensaje indicando que el evento no fue encontrado. Ninguna de las tres operaciones debe modificar datos existentes.
+- **Resultado esperado:** Código HTTP `404 Not Found` con un cuerpo JSON indicando el error, por ejemplo:
+  ```json
+  {
+    "timestamp": "2026-09-15T10:32:11.123",
+    "status": 404,
+    "error": "Not Found",
+    "message": "Evento no encontrado con id: 9999"
+  }
+  ```
+  Ninguna de las tres operaciones debe modificar datos existentes.
 
 ---
 
 ### Prueba del Escenario 3: Paginación de Resultados (Caso de Volumen)
 
-- **Objetivo:** Verificar que el listado paginado entregue exactamente los registros solicitados junto con los metadatos correspondientes.
+- **Objetivo:** Verificar que el listado paginado entregue exactamente los registros solicitados junto con los metadatos correspondientes, y que Swagger permita probarlo directamente desde sus campos de parámetros.
 - **Pasos:**
   1. Registra (o deja que el Seeder registre) al menos 50 eventos.
-  2. Ejecuta `GET /api/events?page=0&size=5`.
+  2. Ejecuta `GET /api/events?page=0&size=5` (o pruébalo desde Swagger, llenando los campos `page` y `size` que ahora aparecen como parámetros propios del endpoint).
 - **Resultado esperado:** Código HTTP `200 OK` con un cuerpo que incluye exactamente 5 elementos en `content`, y metadatos como:
   ```json
   {
@@ -1030,11 +1190,13 @@ Abre Swagger en:
   1. Ejecuta `DELETE /api/events/{id}` sobre un evento existente.
   2. Verifica la respuesta.
   3. Intenta `GET /api/events/{id}` con el mismo ID.
-- **Resultado esperado:** El `DELETE` responde `204 No Content` sin cuerpo. El `GET` posterior responde `404 Not Found`, confirmando que el recurso ya no existe.
+- **Resultado esperado:** El `DELETE` responde `204 No Content` sin cuerpo. El `GET` posterior responde `404 Not Found` con el cuerpo JSON de error, confirmando que el recurso ya no existe.
 
 ---
 
 ### Ejecución de pruebas automatizadas
+
+Antes de correr las pruebas, confirma que PostgreSQL esté activo y que la base `eventify_test` exista (Paso 0.2):
 
 ```bash
 mvn test
@@ -1056,21 +1218,33 @@ Resultado esperado en consola (los números exactos dependerán de cuántas prue
 - **Por qué ocurre:** Se envió un `Event` o `Venue` con un `id` distinto de `null` en una operación de creación, confundiendo a la estrategia `GenerationType.IDENTITY`.
 - **Qué revisar:** Al crear un recurso nuevo, el campo `id` del JSON enviado debe omitirse o enviarse como `null`; solo se debe incluir un `id` real al actualizar (en la URL, no en el body).
 
-### 2. `Connection to localhost:5432 refused` o `FATAL: database "eventify" does not exist`
-- **Por qué ocurre:** El servidor PostgreSQL no está corriendo, o la base de datos `eventify` todavía no se creó (ver Paso 0.1/0.2).
-- **Qué revisar:** Confirma que el contenedor Docker esté activo con `docker ps` (o que el servicio de PostgreSQL esté corriendo si lo instalaste directamente), y abre DBeaver para verificar que la conexión funcione y que la base `eventify` exista en el árbol de conexiones.
+### 2. `Connection to localhost:5432 refused` o `FATAL: database "eventify" does not exist` (o `"eventify_test"`)
+- **Por qué ocurre:** El servidor PostgreSQL no está corriendo, o alguna de las dos bases de datos (`eventify` o `eventify_test`) todavía no se creó (ver Paso 0.1/0.2).
+- **Qué revisar:** Confirma que el contenedor Docker esté activo con `docker ps` (o que el servicio de PostgreSQL esté corriendo si lo instalaste directamente), y abre DBeaver para verificar que ambas bases existan en el árbol de conexiones. Recuerda que la aplicación normal usa `eventify` y las pruebas usan `eventify_test`; si solo creaste una de las dos, un flujo funcionará y el otro fallará.
 
 ### 3. Un `PUT` o `DELETE` responde `500` en lugar de `404`
 - **Por qué ocurre:** El `Service` llama directamente a `eventRepository.save(...)` o `eventRepository.delete(...)` sin verificar antes si el recurso existe.
-- **Qué revisar:** Todo método de actualización o eliminación debe iniciar llamando a `findById(id)`, que ya se encarga de lanzar `ResourceNotFoundException` cuando corresponde.
+- **Qué revisar:** Todo método de actualización o eliminación debe iniciar llamando a `findById(id)`, que ya se encarga de lanzar `ResourceNotFoundException` cuando corresponde, la cual el `GlobalExceptionHandler` traduce en `404`.
 
-### 4. `GET /api/events?sort=nombre,asc` no ordena los resultados
+### 4. El `404` responde con el código correcto pero sin mensaje claro (o con el formato de error por defecto de Spring)
+- **Por qué ocurre:** `ResourceNotFoundException` sigue teniendo `@ResponseStatus(HttpStatus.NOT_FOUND)` en lugar de estar manejada por `GlobalExceptionHandler`, o el `@RestControllerAdvice` no fue detectado por Spring (por ejemplo, quedó fuera del paquete que escanea `@SpringBootApplication`).
+- **Qué revisar:** Confirma que `ResourceNotFoundException` sea una excepción simple (sin `@ResponseStatus`), que `GlobalExceptionHandler` esté anotada con `@RestControllerAdvice`, y que viva dentro de `com.eventify` (o un subpaquete), para que el escaneo de componentes de Spring Boot la detecte automáticamente.
+
+### 5. `GET /api/events?sort=nombre,asc` no ordena los resultados
 - **Por qué ocurre:** El parámetro `sort` hace referencia a un atributo que no existe en la entidad, o el controlador no está recibiendo un `Pageable` como parámetro.
-- **Qué revisar:** El nombre después de `sort=` debe coincidir exactamente con un atributo de la entidad (por ejemplo, `nombre`, no `name`), y el método del controlador debe declarar `Pageable pageable` como parámetro para que Spring lo construya automáticamente.
+- **Qué revisar:** El nombre después de `sort=` debe coincidir exactamente con un atributo de la entidad (por ejemplo, `nombre`, no `name`), y el método del controlador debe declarar `Pageable pageable` (idealmente con `@ParameterObject`) como parámetro para que Spring lo construya automáticamente.
 
-### 5. Las pruebas con `@DataJpaTest` fallan o intentan conectarse a PostgreSQL
-- **Por qué ocurre:** Falta la dependencia `h2` con `scope=test` en el `pom.xml`. Sin ella, Spring no tiene una base de datos embebida disponible y las pruebas intentan usar la configuración real de `application.properties`, apuntando a tu PostgreSQL.
-- **Qué revisar:** Verifica que la dependencia de H2 esté declarada con `<scope>test</scope>` tal como se indicó en el **Paso 0.3**.
+### 6. Swagger no muestra `page`, `size` ni `sort` como parámetros del endpoint
+- **Por qué ocurre:** Falta la anotación `@ParameterObject` sobre el parámetro `Pageable` del método del controlador; sin ella, springdoc no sabe cómo "desarmar" ese objeto en campos individuales.
+- **Qué revisar:** Verifica que el import sea `org.springdoc.core.annotations.ParameterObject` (no una clase de otro paquete con nombre parecido) y que la anotación esté justo antes de `Pageable pageable` en la firma del método, como se muestra en el Paso 5.
+
+### 7. Swagger no muestra `404` ni `204` como respuestas posibles de un endpoint
+- **Por qué ocurre:** Solo se documentó el código en el texto de `description` dentro de `@Operation`, sin usar `@ApiResponse`/`@ApiResponses`.
+- **Qué revisar:** Cada endpoint que pueda devolver `404` o `204` debe declarar explícitamente esos códigos con `@ApiResponse(responseCode = "...", description = "...")`, como se muestra en el Paso 5.
+
+### 8. Las pruebas con `@DataJpaTest` intentan conectarse a la base de aplicación (`eventify`) en lugar de `eventify_test`
+- **Por qué ocurre:** No existe el archivo `src/test/resources/application.properties`, o quedó vacío/mal ubicado, así que `@DataJpaTest` termina heredando la configuración de `src/main/resources/application.properties`.
+- **Qué revisar:** Confirma que el archivo exista exactamente en la ruta `src/test/resources/application.properties` (no `src/main/resources`) y que apunte a `jdbc:postgresql://localhost:5432/eventify_test`, tal como se indicó en el Paso 0.5.
 
 ---
 
@@ -1079,13 +1253,16 @@ Resultado esperado en consola (los números exactos dependerán de cuántas prue
 - [ ] `Event` y `Venue` están anotadas con `@Entity`, `@Table`, `@Id` y `@GeneratedValue`.
 - [ ] Las columnas obligatorias usan `@Column(nullable = false, ...)`.
 - [ ] `EventRepository` y `VenueRepository` son interfaces que extienden `JpaRepository` e incluyen `findByNombreContaining`.
-- [ ] `ResourceNotFoundException` está anotada con `@ResponseStatus(HttpStatus.NOT_FOUND)`.
+- [ ] `ResourceNotFoundException` es una excepción simple (sin `@ResponseStatus`); el código y el mensaje los arma `GlobalExceptionHandler`.
+- [ ] `GlobalExceptionHandler` está anotada con `@RestControllerAdvice` y maneja `ResourceNotFoundException` devolviendo `status`, `error` y `message`.
 - [ ] Los servicios implementan `findById`, `update` y `delete`, verificando primero la existencia del recurso.
 - [ ] Los controladores exponen `GET /{id}`, `PUT /{id}` y `DELETE /{id}`, con `204 No Content` en el borrado.
-- [ ] Los endpoints de listado (`GET /api/events` y `GET /api/venues`) aceptan `page`, `size` y `sort`.
-- [ ] Swagger refleja los nuevos endpoints y códigos de respuesta (`404`, `204`).
-- [ ] Existen pruebas de integración con `@DataJpaTest` para ambos repositorios.
-- [ ] Se verificaron los 4 escenarios de aceptación (persistencia post-reinicio, recurso inexistente, paginación y eliminación exitosa).
+- [ ] Los endpoints de listado (`GET /api/events` y `GET /api/venues`) aceptan `page`, `size` y `sort`, con el parámetro `Pageable` anotado con `@ParameterObject`.
+- [ ] Cada endpoint relevante declara sus códigos de respuesta con `@ApiResponse`/`@ApiResponses` (`200`, `201`, `204`, `400`, `404` según corresponda).
+- [ ] El `pom.xml` **no** incluye la dependencia de `com.h2database:h2`.
+- [ ] Existen dos bases PostgreSQL: `eventify` (aplicación, `src/main/resources/application.properties`) y `eventify_test` (pruebas, `src/test/resources/application.properties`).
+- [ ] Existen pruebas de integración con `@DataJpaTest` para ambos repositorios, corriendo contra `eventify_test`.
+- [ ] Se verificaron los 4 escenarios de aceptación (persistencia post-reinicio, recurso inexistente con mensaje claro, paginación y eliminación exitosa).
 
 ---
 
@@ -1093,9 +1270,11 @@ Resultado esperado en consola (los números exactos dependerán de cuántas prue
 
 1. **De la memoria a la persistencia real:** Entendimos la diferencia entre almacenar datos en una `List` que desaparece al apagar la aplicación, y persistirlos en una base de datos que sobrevive a los reinicios.
 2. **Spring Data JPA reduce el código repetitivo:** Declarar una interfaz que extienda `JpaRepository` nos ahorra escribir a mano las operaciones básicas de acceso a datos, y las Consultas Derivadas nos permiten construir búsquedas específicas a partir del nombre del método.
-3. **Separar los tipos de error importa:** Diferenciar `InvalidDataException` (`400`, datos incorrectos) de `ResourceNotFoundException` (`404`, recurso inexistente) hace que la API sea más clara y predecible para quien la consume.
-4. **Paginación como buena práctica de escalabilidad:** Aprendimos a usar `Pageable` y `Sort` para que los listados sigan siendo eficientes incluso cuando el catálogo crece considerablemente.
-5. **Dos niveles de pruebas:** Comprendimos cuándo usar pruebas de servicio con mocks (rápidas, para lógica de negocio) y cuándo usar `@DataJpaTest` (más lentas, pero necesarias para validar que la persistencia realmente funciona).
+3. **Probar contra el motor real evita sorpresas:** Usar PostgreSQL tanto en la aplicación como en `@DataJpaTest` (en lugar de mezclar con H2) garantiza que lo que se valida en las pruebas es exactamente lo que se comportará en producción.
+4. **Separar los tipos de error importa, y comunicarlos bien importa más:** Diferenciar `InvalidDataException` (`400`) de `ResourceNotFoundException` (`404`) hace que la API sea más predecible, y centralizar su traducción en un `@RestControllerAdvice` asegura que el cliente siempre reciba un mensaje claro, no solo un código.
+5. **Documentar de verdad, no solo describir:** Swagger puede mostrar la paginación (`@ParameterObject`) y los códigos de error (`@ApiResponse`) como elementos estructurados de la API, en lugar de depender de que alguien lea un párrafo de descripción.
+6. **Paginación como buena práctica de escalabilidad:** Aprendimos a usar `Pageable` y `Sort` para que los listados sigan siendo eficientes incluso cuando el catálogo crece considerablemente.
+7. **Dos niveles de pruebas:** Comprendimos cuándo usar pruebas de servicio con mocks (rápidas, para lógica de negocio) y cuándo usar `@DataJpaTest` (más lentas, pero necesarias para validar que la persistencia realmente funciona contra el motor real).
 
 ---
 
@@ -1105,4 +1284,6 @@ Resultado esperado en consola (los números exactos dependerán de cuántas prue
 2. ¿Por qué `GenerationType.IDENTITY` reemplaza la necesidad del `idCounter` manual que usábamos en la Semana 1?
 3. ¿Qué ventaja tiene declarar `findByNombreContaining` como Consulta Derivada en lugar de escribir la consulta SQL a mano?
 4. ¿Por qué el método `update` en el `Service` llama primero a `findById` antes de guardar los nuevos datos?
-5. ¿Qué diferencia práctica existe entre una prueba de `Service` con `@Mock`/`@InjectMocks` y una prueba de repositorio con `@DataJpaTest`?
+5. ¿Por qué es más coherente que `@DataJpaTest` corra contra PostgreSQL (base `eventify_test`) en lugar de contra una base embebida como H2, si la aplicación en producción también usa PostgreSQL?
+6. ¿Qué problema resuelve `@RestControllerAdvice` que no resolvía `@ResponseStatus` directamente sobre la excepción?
+7. ¿Qué diferencia hay entre documentar la paginación con `description` de texto libre y hacerlo con `@ParameterObject`? ¿Por qué la segunda opción es más útil para quien consume la API desde Swagger?
